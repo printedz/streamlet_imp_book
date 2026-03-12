@@ -11,9 +11,6 @@ See [market_sim](market_sim/README.md) for more details on the market simulation
 3. Check other branches (blockchain_integration_test_v0.1).
 4. Contact.
 
-## Contact
-
-juan.diez@torbellino.tech
 
 ## Further docs
 
@@ -30,19 +27,5 @@ python3 test_db_operations.py
 
 Implements a framework for simulating, analyzing, and learning about financial markets, trading strategies, and blockchain integration.
 
-Currently v0.
 
-## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-The MIT License was chosen to:
-- Encourage wide adoption and collaboration
-- Allow commercial and academic use
-- Keep compliance simple
-- Protect contributors from liability
-- Maintain compatibility with most open-source projects
-
-## Notes
-
-Project log reinitialized on 2025-01-19.

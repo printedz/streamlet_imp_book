@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Streamlet Protocol Visualization</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+        font-family: 'Segoe UI', system-ui, sans-serif;
+        background: #0f1923;
+        color: #e0e0e0;
+        padding: 20px;
+    }
+    h1 {
+        text-align: center;
+        color: #64B5F6;
+        margin-bottom: 8px;
+        font-size: 1.8em;
+    }
+    .subtitle {
+        text-align: center;
+        color: #90A4AE;
+        margin-bottom: 24px;
+        font-size: 0.95em;
+    }
+    .grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+        max-width: 1400px;
+        margin: 0 auto;
+    }
+    .card {
+        background: #1a2736;
+        border-radius: 12px;
+        padding: 20px;
+        border: 1px solid #263545;
+    }
+    .card h2 {
+        color: #64B5F6;
+        margin-bottom: 16px;
+        font-size: 1.1em;
+    }
+    .full-width { grid-column: 1 / -1; }
+    .stats {
+        display: flex;
+        gap: 16px;
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+    .stat {
+        background: #223344;
+        border-radius: 8px;
+        padding: 12px 20px;
+        text-align: center;
+        min-width: 120px;
+    }
+    .stat .value {
+        font-size: 1.8em;
+        font-weight: bold;
+        color: #64B5F6;
+    }
+    .stat .label {
+        font-size: 0.8em;
+        color: #90A4AE;
+        margin-top: 4px;
+    }
+    .consistency-badge {
+        display: inline-block;
+        padding: 6px 16px;
+        border-radius: 20px;
+        font-weight: bold;
+        font-size: 0.9em;
+    }
+    .consistent { background: #1B5E20; color: #A5D6A7; }
+    .inconsistent { background: #B71C1C; color: #EF9A9A; }
+    canvas { max-height: 300px; }
+    .block-tree {
+        overflow-x: auto;
+        padding: 10px 0;
+    }
+    .block-row {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        margin: 4px 0;
+        font-size: 0.75em;
+        font-family: monospace;
+    }
+    .block-cell {
+        width: 36px;
+        height: 28px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 4px;
+        font-size: 0.75em;
+        flex-shrink: 0;
+    }
+    .block-empty { background: transparent; }
+    .block-proposed { background: #37474F; border: 1px solid #546E7A; }
+    .block-notarized { background: #1565C0; border: 1px solid #42A5F5; }
+    .block-finalized { background: #2E7D32; border: 1px solid #66BB6A; }
+    .node-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: 6px 0;
+    }
+    .node-label {
+        width: 80px;
+        font-size: 0.8em;
+        color: #90A4AE;
+    }
+    .node-bar {
+        height: 20px;
+        border-radius: 4px;
+        display: flex;
+        align-items: center;
+        padding: 0 8px;
+        font-size: 0.7em;
+        color: white;
+    }
+    .legend {
+        display: flex;
+        gap: 16px;
+        margin-top: 10px;
+        font-size: 0.8em;
+    }
+    .legend-item {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+    }
+    .legend-color {
+        width: 12px;
+        height: 12px;
+        border-radius: 3px;
+    }
+</style>
+</head>
+<body>
+
+<h1>Streamlet Consensus Protocol</h1>
+<p class="subtitle">
+    10 nodes (3 corrupt) &middot;
+    30 epochs &middot;
+    Consistency:
+    <span class="consistency-badge consistent">
+        CONSISTENT
+    </span>
+</p>
+
+<div class="grid">
+
+    <!-- Summary Stats -->
+    <div class="card full-width">
+        <h2>Protocol Summary</h2>
+        <div class="stats">
+            <div class="stat">
+                <div class="value">16</div>
+                <div class="label">Blocks Proposed</div>
+            </div>
+            <div class="stat">
+                <div class="value">16</div>
+                <div class="label">Blocks Notarized</div>
+            </div>
+            <div class="stat">
+                <div class="value">16</div>
+                <div class="label">Blocks Finalized</div>
+            </div>
+            <div class="stat">
+                <div class="value">112</div>
+                <div class="label">Votes Cast</div>
+            </div>
+            <div class="stat">
+                <div class="value">16/30</div>
+                <div class="label">Honest Leaders</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notarization & Finalization Progress -->
+    <div class="card">
+        <h2>Notarization &amp; Finalization Progress</h2>
+        <canvas id="progressChart"></canvas>
+    </div>
+
+    <!-- Leader Distribution -->
+    <div class="card">
+        <h2>Epoch Leader Distribution</h2>
+        <canvas id="leaderChart"></canvas>
+    </div>
+
+    <!-- Block Timeline -->
+    <div class="card full-width">
+        <h2>Block Timeline (Node 0 View)</h2>
+        <div class="block-tree" id="blockTree"></div>
+        <div class="legend">
+            <div class="legend-item">
+                <div class="legend-color" style="background:#37474F;border:1px solid #546E7A;"></div>
+                Proposed
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background:#1565C0;border:1px solid #42A5F5;"></div>
+                Notarized
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background:#2E7D32;border:1px solid #66BB6A;"></div>
+                Finalized
+            </div>
+        </div>
+    </div>
+
+    <!-- Per-Node Finalized Logs -->
+    <div class="card full-width">
+        <h2>Finalized Log Per Node</h2>
+        <div id="nodeLogs"></div>
+    </div>
+
+</div>
+
+<script>
+const data = {"params": {"n_nodes": 10, "n_corrupt": 3, "n_epochs": 30}, "metrics": {"epochs_run": 30, "blocks_proposed": 16, "blocks_notarized": 16, "blocks_finalized": 16, "votes_cast": 112, "epoch_leaders": [9, 9, 2, 5, 9, 9, 5, 9, 0, 8, 9, 9, 8, 6, 0, 1, 9, 1, 4, 7, 0, 5, 9, 2, 9, 0, 8, 1, 0, 5], "leader_is_honest": [false, false, true, true, false, false, true, false, true, false, false, false, false, true, true, true, false, true, true, false, true, true, false, true, false, true, false, true, true, true], "notarization_history": [{"epoch": 3, "block_hash": "e11afdda21f070fc"}, {"epoch": 4, "block_hash": "2b878a197ad95224"}, {"epoch": 7, "block_hash": "edfabcef1a83774f"}, {"epoch": 9, "block_hash": "b34c460c44f89ca2"}, {"epoch": 14, "block_hash": "5f3dca8d1dfcfbd1"}, {"epoch": 15, "block_hash": "bb904bcde12a8a39"}, {"epoch": 16, "block_hash": "68d02d836bef74c0"}, {"epoch": 18, "block_hash": "ec509f0ce6cfbbc6"}, {"epoch": 19, "block_hash": "4d2510d10e31d98e"}, {"epoch": 21, "block_hash": "b192b4239e139b7b"}, {"epoch": 22, "block_hash": "f0b76e0b63e8e494"}, {"epoch": 24, "block_hash": "8706d0565e827c95"}, {"epoch": 26, "block_hash": "a76fdf84a659f574"}, {"epoch": 28, "block_hash": "a43878004466d44e"}, {"epoch": 29, "block_hash": "4e54f07fe2c3ced6"}, {"epoch": 30, "block_hash": "338489ae60b57248"}], "finalization_history": [{"epoch": 16, "finalized_block_epoch": 0, "block_hash": "3911469a2c266023"}, {"epoch": 16, "finalized_block_epoch": 3, "block_hash": "e11afdda21f070fc"}, {"epoch": 16, "finalized_block_epoch": 4, "block_hash": "2b878a197ad95224"}, {"epoch": 16, "finalized_block_epoch": 7, "block_hash": "edfabcef1a83774f"}, {"epoch": 16, "finalized_block_epoch": 9, "block_hash": "b34c460c44f89ca2"}, {"epoch": 16, "finalized_block_epoch": 14, "block_hash": "5f3dca8d1dfcfbd1"}, {"epoch": 16, "finalized_block_epoch": 15, "block_hash": "bb904bcde12a8a39"}, {"epoch": 30, "finalized_block_epoch": 16, "block_hash": "68d02d836bef74c0"}, {"epoch": 30, "finalized_block_epoch": 18, "block_hash": "ec509f0ce6cfbbc6"}, {"epoch": 30, "finalized_block_epoch": 19, "block_hash": "4d2510d10e31d98e"}, {"epoch": 30, "finalized_block_epoch": 21, "block_hash": "b192b4239e139b7b"}, {"epoch": 30, "finalized_block_epoch": 22, "block_hash": "f0b76e0b63e8e494"}, {"epoch": 30, "finalized_block_epoch": 24, "block_hash": "8706d0565e827c95"}, {"epoch": 30, "finalized_block_epoch": 26, "block_hash": "a76fdf84a659f574"}, {"epoch": 30, "finalized_block_epoch": 28, "block_hash": "a43878004466d44e"}, {"epoch": 30, "finalized_block_epoch": 29, "block_hash": "4e54f07fe2c3ced6"}]}, "blocks": [{"hash": "3911469a2c26", "epoch": 0, "parent_hash": null, "notarized": true, "finalized": true, "tx_count": 0}, {"hash": "e11afdda21f0", "epoch": 3, "parent_hash": "3911469a2c26", "notarized": true, "finalized": true, "tx_count": 1}, {"hash": "2b878a197ad9", "epoch": 4, "parent_hash": "e11afdda21f0", "notarized": true, "finalized": true, "tx_count": 1}, {"hash": "edfabcef1a83", "epoch": 7, "parent_hash": "2b878a197ad9", "notarized": true, "finalized": true, "tx_count": 1}, {"hash": "b34c460c44f8", "epoch": 9, "parent_hash": "edfabcef1a83", "notarized": true, "finalized": true, "tx_count": 1}, {"hash": "5f3dca8d1dfc", "epoch": 14, "parent_hash": "b34c460c44f8", "notarized": true, "finalized": true, "tx_count": 1}, {"hash": "bb904bcde12a", "epoch": 15, "parent_hash": "5f3dca8d1dfc", "notarized": true, "finalized": true, "tx_count": 1}, {"hash": "68d02d836bef", "epoch": 16, "parent_hash": "bb904bcde12a", "notarized": true, "finalized": true, "tx_count": 1}, {"hash": "ec509f0ce6cf", "epoch": 18, "parent_hash": "68d02d836bef", "notarized": true, "finalized": true, "tx_count": 1}, {"hash": "4d2510d10e31", "epoch": 19, "parent_hash": "ec509f0ce6cf", "notarized": true, "finalized": true, "tx_count": 1}, {"hash": "b192b4239e13", "epoch": 21, "parent_hash": "4d2510d10e31", "notarized": true, "finalized": true, "tx_count": 1}, {"hash": "f0b76e0b63e8", "epoch": 22, "parent_hash": "b192b4239e13", "notarized": true, "finalized": true, "tx_count": 1}, {"hash": "8706d0565e82", "epoch": 24, "parent_hash": "f0b76e0b63e8", "notarized": true, "finalized": true, "tx_count": 1}, {"hash": "a76fdf84a659", "epoch": 26, "parent_hash": "8706d0565e82", "notarized": true, "finalized": true, "tx_count": 1}, {"hash": "a43878004466", "epoch": 28, "parent_hash": "a76fdf84a659", "notarized": true, "finalized": true, "tx_count": 1}, {"hash": "4e54f07fe2c3", "epoch": 29, "parent_hash": "a43878004466", "notarized": true, "finalized": true, "tx_count": 1}, {"hash": "338489ae60b5", "epoch": 30, "parent_hash": "4e54f07fe2c3", "notarized": true, "finalized": false, "tx_count": 1}], "node_logs": [{"node_id": 0, "type": "honest", "finalized_length": 16, "finalized_epochs": [0, 3, 4, 7, 9, 14, 15, 16, 18, 19, 21, 22, 24, 26, 28, 29]}, {"node_id": 1, "type": "honest", "finalized_length": 16, "finalized_epochs": [0, 3, 4, 7, 9, 14, 15, 16, 18, 19, 21, 22, 24, 26, 28, 29]}, {"node_id": 2, "type": "honest", "finalized_length": 16, "finalized_epochs": [0, 3, 4, 7, 9, 14, 15, 16, 18, 19, 21, 22, 24, 26, 28, 29]}, {"node_id": 3, "type": "honest", "finalized_length": 16, "finalized_epochs": [0, 3, 4, 7, 9, 14, 15, 16, 18, 19, 21, 22, 24, 26, 28, 29]}, {"node_id": 4, "type": "honest", "finalized_length": 16, "finalized_epochs": [0, 3, 4, 7, 9, 14, 15, 16, 18, 19, 21, 22, 24, 26, 28, 29]}, {"node_id": 5, "type": "honest", "finalized_length": 16, "finalized_epochs": [0, 3, 4, 7, 9, 14, 15, 16, 18, 19, 21, 22, 24, 26, 28, 29]}, {"node_id": 6, "type": "honest", "finalized_length": 16, "finalized_epochs": [0, 3, 4, 7, 9, 14, 15, 16, 18, 19, 21, 22, 24, 26, 28, 29]}, {"node_id": 7, "type": "corrupt", "finalized_length": 16, "finalized_epochs": [0, 3, 4, 7, 9, 14, 15, 16, 18, 19, 21, 22, 24, 26, 28, 29]}, {"node_id": 8, "type": "corrupt", "finalized_length": 16, "finalized_epochs": [0, 3, 4, 7, 9, 14, 15, 16, 18, 19, 21, 22, 24, 26, 28, 29]}, {"node_id": 9, "type": "corrupt", "finalized_length": 16, "finalized_epochs": [0, 3, 4, 7, 9, 14, 15, 16, 18, 19, 21, 22, 24, 26, 28, 29]}], "consistency": true};
+const notarizationCumulative = [0, 0, 1, 2, 2, 2, 3, 3, 4, 4, 4, 4, 4, 5, 6, 7, 7, 8, 9, 9, 10, 11, 11, 12, 12, 13, 13, 14, 15, 16];
+const finalizationCumulative = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2];
+const leaderColors = ["#F44336", "#F44336", "#4CAF50", "#4CAF50", "#F44336", "#F44336", "#4CAF50", "#F44336", "#4CAF50", "#F44336", "#F44336", "#F44336", "#F44336", "#4CAF50", "#4CAF50", "#4CAF50", "#F44336", "#4CAF50", "#4CAF50", "#F44336", "#4CAF50", "#4CAF50", "#F44336", "#4CAF50", "#F44336", "#4CAF50", "#F44336", "#4CAF50", "#4CAF50", "#4CAF50"];
+const epochs = Array.from({length: data.params.n_epochs}, (_, i) => i + 1);
+
+// Progress Chart
+new Chart(document.getElementById('progressChart'), {
+    type: 'line',
+    data: {
+        labels: epochs,
+        datasets: [
+            {
+                label: 'Cumulative Notarized',
+                data: notarizationCumulative,
+                borderColor: '#42A5F5',
+                backgroundColor: 'rgba(66,165,245,0.1)',
+                fill: true,
+                tension: 0.3,
+            },
+            {
+                label: 'Cumulative Finalized',
+                data: finalizationCumulative,
+                borderColor: '#66BB6A',
+                backgroundColor: 'rgba(102,187,106,0.1)',
+                fill: true,
+                tension: 0.3,
+            }
+        ]
+    },
+    options: {
+        responsive: true,
+        plugins: {
+            legend: { labels: { color: '#B0BEC5' } }
+        },
+        scales: {
+            x: {
+                title: { display: true, text: 'Epoch', color: '#B0BEC5' },
+                ticks: { color: '#78909C' },
+                grid: { color: '#263545' }
+            },
+            y: {
+                title: { display: true, text: 'Count', color: '#B0BEC5' },
+                ticks: { color: '#78909C' },
+                grid: { color: '#263545' }
+            }
+        }
+    }
+});
+
+// Leader Chart
+new Chart(document.getElementById('leaderChart'), {
+    type: 'bar',
+    data: {
+        labels: epochs,
+        datasets: [{
+            label: 'Leader Node',
+            data: data.metrics.epoch_leaders,
+            backgroundColor: leaderColors,
+            borderRadius: 2,
+        }]
+    },
+    options: {
+        responsive: true,
+        plugins: {
+            legend: { display: false },
+            tooltip: {
+                callbacks: {
+                    label: function(ctx) {
+                        const honest = data.metrics.leader_is_honest[ctx.dataIndex];
+                        return `Node ${ctx.raw} (${honest ? 'honest' : 'CORRUPT'})`;
+                    }
+                }
+            }
+        },
+        scales: {
+            x: {
+                title: { display: true, text: 'Epoch', color: '#B0BEC5' },
+                ticks: { color: '#78909C' },
+                grid: { color: '#263545' }
+            },
+            y: {
+                title: { display: true, text: 'Node ID', color: '#B0BEC5' },
+                ticks: { color: '#78909C', stepSize: 1 },
+                grid: { color: '#263545' }
+            }
+        }
+    }
+});
+
+// Block Timeline
+const blockTree = document.getElementById('blockTree');
+const maxEpoch = data.params.n_epochs;
+let html = '<div class="block-row"><span style="width:36px;text-align:center;font-size:0.7em;color:#546E7A;">Epoch</span>';
+for (let e = 0; e <= maxEpoch; e++) {
+    html += `<div class="block-cell block-empty" style="color:#546E7A;font-size:0.65em;">${e}</div>`;
+}
+html += '</div>';
+
+// Build block row
+html += '<div class="block-row"><span style="width:36px;text-align:center;font-size:0.7em;color:#90A4AE;">Chain</span>';
+const blocksByEpoch = {};
+data.blocks.forEach(b => { blocksByEpoch[b.epoch] = b; });
+
+for (let e = 0; e <= maxEpoch; e++) {
+    const b = blocksByEpoch[e];
+    if (b) {
+        let cls = 'block-proposed';
+        if (b.finalized) cls = 'block-finalized';
+        else if (b.notarized) cls = 'block-notarized';
+        html += `<div class="block-cell ${cls}" title="Epoch ${b.epoch}\nHash: ${b.hash}\nTxs: ${b.tx_count}">${b.epoch}</div>`;
+    } else {
+        html += '<div class="block-cell block-empty"></div>';
+    }
+}
+html += '</div>';
+blockTree.innerHTML = html;
+
+// Node Logs
+const nodeLogs = document.getElementById('nodeLogs');
+const maxLog = Math.max(...data.node_logs.map(n => n.finalized_length), 1);
+let logsHtml = '';
+data.node_logs.forEach(n => {
+    const width = (n.finalized_length / maxLog) * 100;
+    const color = n.type === 'honest' ? '#1565C0' : '#C62828';
+    const label = n.type === 'honest' ? 'H' : 'C';
+    logsHtml += `
+        <div class="node-row">
+            <span class="node-label">Node ${n.node_id} (${label})</span>
+            <div class="node-bar" style="width:${Math.max(width, 5)}%;background:${color};">
+                ${n.finalized_length} blocks: [${n.finalized_epochs.join(', ')}]
+            </div>
+        </div>`;
+});
+nodeLogs.innerHTML = logsHtml;
+</script>
+
+</body>
+</html>
